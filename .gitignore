@@ -16,3 +16,7 @@ pnpm-debug.log*
 Thumbs.db
 
 .claude/
+
+# WhatsApp session (contains auth tokens — never commit)
+.wwebjs_auth/
+backend/.wwebjs_auth/

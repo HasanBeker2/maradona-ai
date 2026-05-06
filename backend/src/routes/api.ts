@@ -14,9 +14,10 @@ import {
 import { sendPrivacyNoticeIfNeeded } from '../services/groups';
 import { logger } from '../utils/logger';
 
-function checkAuth(request: any, reply: any): boolean {
+function checkAuth(request: any, reply: any, writeOnly = false): boolean {
   const secret = process.env.API_SECRET;
-  if (!secret) return true; // no secret configured — open in dev
+  // No secret configured, or this is a read-only route → always allow
+  if (!secret || writeOnly) return true;
 
   const auth = request.headers['authorization'] ?? '';
   if (auth !== `Bearer ${secret}`) {
@@ -50,14 +51,14 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /api/groups
   fastify.get('/api/groups', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const groups = await listActiveGroups();
     return reply.send(groups);
   });
 
   // POST /api/groups
   fastify.post('/api/groups', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const parsed = AddGroupSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors });
 
@@ -68,7 +69,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // PATCH /api/groups/:id/toggle
   fastify.patch('/api/groups/:id/toggle', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const { id } = req.params as { id: string };
     const { is_active } = req.body as { is_active: boolean };
     await toggleGroupActive(id, is_active);
@@ -77,7 +78,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /api/groups/:id/privacy-notice
   fastify.post('/api/groups/:id/privacy-notice', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const { id } = req.params as { id: string };
     const group = await findGroupByChatId(id).catch(() => null);
     if (!group) return reply.code(404).send({ error: 'Group not found' });
@@ -89,7 +90,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /api/messages?groupId=&page=&limit=
   fastify.get('/api/messages', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const parsed = MessagesQuerySchema.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors });
 
@@ -103,7 +104,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /api/tasks?groupId=&status=
   fastify.get('/api/tasks', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const parsed = TasksQuerySchema.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors });
 
@@ -113,7 +114,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /api/summaries?groupId=
   fastify.get('/api/summaries', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const parsed = SummariesQuerySchema.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.errors });
 
@@ -123,7 +124,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
 
   // GET /api/stats
   fastify.get('/api/stats', async (req, reply) => {
-    if (!checkAuth(req, reply)) return;
+    if (!checkAuth(req, reply, true)) return;
     const stats = await getStats();
     return reply.send(stats);
   });

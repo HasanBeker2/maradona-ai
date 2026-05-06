@@ -1,7 +1,12 @@
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 
-const openai = new OpenAI();
+// Lazy-initialized so dotenv has time to load before the key is read
+let openai: OpenAI;
+function getOpenAI(): OpenAI {
+  if (!openai) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return openai;
+}
 
 const MIME_TO_EXT: Record<string, string> = {
   'audio/ogg': 'ogg',
@@ -18,7 +23,7 @@ export async function transcribeAudio(buffer: Buffer, mimeType: string): Promise
 
   logger.info({ mimeType, ext, bytes: buffer.length }, 'Transcribing audio via Whisper');
 
-  const result = await openai.audio.transcriptions.create({
+  const result = await getOpenAI().audio.transcriptions.create({
     file,
     model: 'whisper-1',
   });

@@ -57,9 +57,7 @@ export function initWhatsAppClient(): void {
     logger.warn({ reason }, 'WhatsApp client disconnected');
   });
 
-  client.on('message_create', async (message: Message) => {
-    // Only process incoming messages (not our own)
-    if (message.fromMe) return;
+  client.on('message', async (message: Message) => {
 
     // Only process group messages
     const chat = await message.getChat();
@@ -90,9 +88,13 @@ export function initWhatsAppClient(): void {
 
       // Detect @Maradona trigger: check mentionedIds or body keyword
       const botJid = client.info.wid._serialized;
-      // mentionedIds is string[] in whatsapp-web.js
       const mentionedIds: string[] = (message.mentionedIds ?? []) as unknown as string[];
+      const isVoice = message.hasMedia && (message.type === 'audio' || message.type === 'ptt');
+
+      // For voice messages: always pass to handler (transcript decides if triggered)
+      // For text messages: check @mention or keyword
       const isMentioned =
+        isVoice ||
         mentionedIds.some((id) => id === botJid) ||
         containsTrigger(body);
 
@@ -107,7 +109,7 @@ export function initWhatsAppClient(): void {
       });
 
       if (isMentioned) {
-        logger.info({ chatId, senderName, body: body.slice(0, 80) }, '@Maradona triggered');
+        logger.info({ chatId, senderName, type: message.type }, '@Maradona triggered');
         await handleTriggerMessage({
           message,
           savedMessageId: savedMessage.id,

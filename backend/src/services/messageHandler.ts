@@ -6,6 +6,7 @@ import { createTodo, createTodolist, uploadFile } from './basecamp';
 import { sendToGroup, downloadMediaFromMessage } from './whatsappClient';
 import { transcribeAudio } from './transcribe';
 import { logger } from '../utils/logger';
+import { containsTrigger } from '../utils/normalize';
 import type { ConversationMessage } from '../types/task';
 
 // In-memory active list per chat (replaces Redis-based active list)
@@ -25,9 +26,22 @@ export async function handleTriggerMessage(ctx: TriggerContext): Promise<void> {
 
   try {
     // Auto-process audio messages
-    if (message.hasMedia && message.type === 'audio') {
+    if (message.hasMedia && (message.type === 'audio' || message.type === 'ptt')) {
       await handleVoiceAutoProcess(message, savedMessageId, chatId, groupId);
       return;
+    }
+
+    // If replying to a media message → treat as file_save directly (skip Claude)
+    const quotedForMedia = await message.getQuotedMessage().catch(() => null);
+    if (quotedForMedia?.hasMedia) {
+      const media = await downloadMediaFromMessage(quotedForMedia);
+      if (media) {
+        const filename = `file_${Date.now()}`;
+        const result = await uploadFile(media.buffer, filename, media.mimeType);
+        await insertTask({ messageId: savedMessageId, title: `Dosya yüklendi: ${filename}`, syncStatus: 'synced', basecampUrl: result.app_url });
+        await sendToGroup(chatId, `Dosya Basecamp'e yüklendi: ${result.app_url}`);
+        return;
+      }
     }
 
     const contextRows = await getRecentMessagesForContext(groupId, 10);
@@ -73,7 +87,7 @@ export async function handleTriggerMessage(ctx: TriggerContext): Promise<void> {
     // VOICE TASK
     if (extraction.intent === 'voice_task') {
       const quoted = await message.getQuotedMessage().catch(() => null);
-      const audioMsg = (quoted?.hasMedia && quoted?.type === 'audio') ? quoted : null;
+      const audioMsg = (quoted?.hasMedia && (quoted?.type === 'audio' || quoted?.type === 'ptt')) ? quoted : null;
       if (!audioMsg) {
         await sendToGroup(chatId, 'Sesli mesaj bulunamadı. Bir sesli mesajı alıntılayarak komut verin.');
         return;
@@ -112,7 +126,7 @@ export async function handleTriggerMessage(ctx: TriggerContext): Promise<void> {
     // VOICE SAVE
     if (extraction.intent === 'voice_save') {
       const quoted = await message.getQuotedMessage().catch(() => null);
-      const audioMsg = (quoted?.hasMedia && quoted?.type === 'audio') ? quoted : null;
+      const audioMsg = (quoted?.hasMedia && (quoted?.type === 'audio' || quoted?.type === 'ptt')) ? quoted : null;
       if (!audioMsg) { await sendToGroup(chatId, 'Sesli mesaj bulunamadı.'); return; }
 
       const media = await downloadMediaFromMessage(audioMsg);
@@ -202,6 +216,12 @@ async function handleVoiceAutoProcess(
 
     const transcript = await transcribeAudio(media.buffer, media.mimeType);
     logger.info({ transcript }, 'Audio auto-transcribed');
+
+    // Only continue if "Maradona" is spoken in the voice message
+    if (!containsTrigger(transcript)) {
+      logger.info('Voice message has no trigger — skipping');
+      return;
+    }
 
     const contextRows = await getRecentMessagesForContext(groupId, 10);
     const context: ConversationMessage[] = contextRows.map((r) => ({
