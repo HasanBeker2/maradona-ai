@@ -20,3 +20,8 @@ Thumbs.db
 # WhatsApp session (contains auth tokens — never commit)
 .wwebjs_auth/
 backend/.wwebjs_auth/
+
+# Docs (internal use only)
+kurulum.md
+kurulum.pdf
+maradona_ai.md
