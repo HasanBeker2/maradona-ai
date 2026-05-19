@@ -116,7 +116,7 @@ export const getSummaries = (groupId: string) =>
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 export const getWhatsAppStatus = () => apiFetch<WaStatusResponse>('/api/whatsapp/status');
-export const resetWhatsApp = () => apiFetch('/api/whatsapp/reset', { method: 'POST' });
+export const resetWhatsApp = () => apiFetch('/api/whatsapp/reset', { method: 'POST', body: '{}' });
 
 // ── Basecamp ──────────────────────────────────────────────────────────────────
 export const getBasecampStatus = () => apiFetch<BasecampStatusResponse>('/api/basecamp/status');

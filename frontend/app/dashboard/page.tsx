@@ -48,9 +48,14 @@ function DashboardContent() {
     queryFn: getBasecampStatus,
   });
 
+  const [resetError, setResetError] = useState('');
   const resetMutation = useMutation({
     mutationFn: resetWhatsApp,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['wa-status'] }),
+    onSuccess: () => {
+      setResetError('');
+      qc.invalidateQueries({ queryKey: ['wa-status'] });
+    },
+    onError: (err: Error) => setResetError(err.message),
   });
 
   const statCards = [
@@ -118,6 +123,7 @@ function DashboardContent() {
               >
                 {resetMutation.isPending ? 'Resetting...' : '🔄 Reset WhatsApp'}
               </button>
+              {resetError && <p className="text-xs text-red-500">{resetError}</p>}
               <p className="text-xs text-gray-400">Use this if WhatsApp is stuck or shows errors</p>
             </div>
           )}

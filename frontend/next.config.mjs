@@ -2,10 +2,15 @@
 const nextConfig = {
   output: 'standalone',
   async rewrites() {
+    const backendUrl = process.env.API_URL ?? 'http://backend:3000';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.API_URL ?? 'http://localhost:3000'}/api/:path*`,
+        destination: `${backendUrl}/api/:path*`,
+      },
+      {
+        source: '/auth/:path*',
+        destination: `${backendUrl}/auth/:path*`,
       },
     ];
   },

@@ -30,6 +30,10 @@ services:
       BASECAMP_PROJECT_ID: ${BASECAMP_PROJECT_ID}
       BASECAMP_TODOLIST_ID: ${BASECAMP_TODOLIST_ID}
       API_SECRET: ${API_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      BASECAMP_REDIRECT_URI: ${BASECAMP_REDIRECT_URI}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
       PORT: 3000
       NODE_ENV: production
@@ -54,6 +58,7 @@ services:
     environment:
       API_URL: http://backend:3000
       NEXT_PUBLIC_API_URL: ""
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       - backend
     ports:

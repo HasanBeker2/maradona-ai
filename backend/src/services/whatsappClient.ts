@@ -51,7 +51,10 @@ export async function resetWhatsApp(): Promise<void> {
 
   const authPath = process.env.WWEBJS_AUTH_PATH ?? '.wwebjs_auth';
   try {
-    fs.rmSync(authPath, { recursive: true, force: true });
+    // Delete contents but not the mount point directory itself
+    for (const entry of fs.readdirSync(authPath)) {
+      fs.rmSync(`${authPath}/${entry}`, { recursive: true, force: true });
+    }
     logger.info({ authPath }, 'WhatsApp session cleared');
   } catch (err) {
     logger.warn({ err, authPath }, 'Could not clear session dir');
@@ -60,9 +63,28 @@ export async function resetWhatsApp(): Promise<void> {
   initWhatsAppClient();
 }
 
+function clearChromiumLocks(): void {
+  const authPath = process.env.WWEBJS_AUTH_PATH ?? '.wwebjs_auth';
+  const lockPatterns = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  try {
+    const sessionDir = fs.readdirSync(authPath, { recursive: true, withFileTypes: true }) as fs.Dirent[];
+    for (const entry of sessionDir) {
+      if (lockPatterns.some((p) => entry.name === p)) {
+        const full = `${entry.parentPath ?? (entry as any).path}/${entry.name}`;
+        fs.rmSync(full, { force: true });
+        logger.info({ file: full }, 'Removed Chromium lock file');
+      }
+    }
+  } catch {
+    // auth dir may not exist yet
+  }
+}
+
 export function initWhatsAppClient(): void {
   waStatus = 'initializing';
   currentQr = null;
+
+  clearChromiumLocks();
 
   client = new Client({
     authStrategy: new LocalAuth({
