@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import { authRoutes } from './routes/auth';
 import { apiRoutes } from './routes/api';
 import { initDb } from './services/mapping';
@@ -25,6 +26,7 @@ async function main() {
     credentials: true,
   });
 
+  await app.register(cookie);
   await app.register(authRoutes);
   await app.register(apiRoutes);
 

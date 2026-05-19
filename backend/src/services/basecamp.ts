@@ -1,12 +1,19 @@
 import axios from 'axios';
 import type { BasecampTodo } from '../types/task';
 import { logger } from '../utils/logger';
+import { getSetting } from './mapping';
 
 const BASE_URL = 'https://3.basecampapi.com';
 
-function getHeaders() {
+async function getAccessToken(): Promise<string> {
+  const dbToken = await getSetting('basecamp_access_token').catch(() => null);
+  return dbToken ?? process.env.BASECAMP_ACCESS_TOKEN ?? '';
+}
+
+async function getHeaders() {
+  const token = await getAccessToken();
   return {
-    Authorization: `Bearer ${process.env.BASECAMP_ACCESS_TOKEN}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
     'User-Agent': 'Maradona Bot (contact@yourdomain.com)',
   };
@@ -17,14 +24,14 @@ export async function createTodolist(name: string): Promise<{ id: number; app_ur
   const projectId = process.env.BASECAMP_PROJECT_ID;
 
   const projectUrl = `${BASE_URL}/${accountId}/projects/${projectId}.json`;
-  const { data: project } = await axios.get(projectUrl, { headers: getHeaders() });
+  const { data: project } = await axios.get(projectUrl, { headers: await getHeaders() });
   const todoset = (project.dock as Array<{ name: string; id: number }>).find(
     (d) => d.name === 'todoset',
   );
   if (!todoset) throw new Error('No todoset found in Basecamp project');
 
   const url = `${BASE_URL}/${accountId}/buckets/${projectId}/todosets/${todoset.id}/todolists.json`;
-  const { data } = await axios.post(url, { name }, { headers: getHeaders() });
+  const { data } = await axios.post(url, { name }, { headers: await getHeaders() });
   logger.info({ name, id: data.id }, 'Basecamp todolist created');
   return { id: data.id, app_url: data.app_url };
 }
@@ -52,7 +59,7 @@ export async function createTodo(params: {
   logger.info({ url, body }, 'Creating Basecamp todo');
 
   const { data } = await axios.post<BasecampTodo>(url, body, {
-    headers: getHeaders(),
+    headers: await getHeaders(),
   });
 
   return data;
@@ -66,7 +73,7 @@ export async function addComment(
   const accountId = process.env.BASECAMP_ACCOUNT_ID;
   const url = `${BASE_URL}/${accountId}/buckets/${projectId}/recordings/${todoId}/comments.json`;
 
-  await axios.post(url, { content }, { headers: getHeaders() });
+  await axios.post(url, { content }, { headers: await getHeaders() });
 }
 
 export async function uploadFile(
@@ -81,7 +88,7 @@ export async function uploadFile(
   const attachUrl = `${BASE_URL}/${accountId}/attachments.json?name=${encodeURIComponent(filename)}`;
   const { data: attachment } = await axios.post(attachUrl, buffer, {
     headers: {
-      Authorization: `Bearer ${process.env.BASECAMP_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${await getAccessToken()}`,
       'Content-Type': mimeType,
       'User-Agent': 'Maradona Bot (contact@yourdomain.com)',
     },
@@ -90,7 +97,7 @@ export async function uploadFile(
 
   // Step 2: find vault ID from project
   const projectUrl = `${BASE_URL}/${accountId}/projects/${projectId}.json`;
-  const { data: project } = await axios.get(projectUrl, { headers: getHeaders() });
+  const { data: project } = await axios.get(projectUrl, { headers: await getHeaders() });
   const vault = (project.dock as Array<{ name: string; id: number }>).find(
     (d) => d.name === 'vault',
   );
@@ -102,7 +109,7 @@ export async function uploadFile(
   const { data: doc } = await axios.post(
     docUrl,
     { title: filename, content, status: 'active' },
-    { headers: getHeaders() },
+    { headers: await getHeaders() },
   );
 
   logger.info({ filename, app_url: doc.app_url }, 'File uploaded to Basecamp vault');

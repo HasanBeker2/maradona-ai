@@ -1,5 +1,7 @@
 import { Client, LocalAuth, Message, MessageMedia } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
+import fs from 'fs';
 import { logger } from '../utils/logger';
 import { containsTrigger } from '../utils/normalize';
 import {
@@ -10,10 +12,22 @@ import {
 import { sendPrivacyNoticeIfNeeded } from './groups';
 import { handleTriggerMessage } from './messageHandler';
 
+export type WaStatus = 'initializing' | 'qr' | 'ready' | 'disconnected';
+
 let client: Client;
+let currentQr: string | null = null;
+let waStatus: WaStatus = 'initializing';
 
 export function getClient(): Client {
   return client;
+}
+
+export function getWaStatus(): WaStatus {
+  return waStatus;
+}
+
+export function getCurrentQrDataUrl(): string | null {
+  return currentQr;
 }
 
 export async function sendToGroup(chatId: string, text: string): Promise<void> {
@@ -24,7 +38,32 @@ export async function sendToGroup(chatId: string, text: string): Promise<void> {
   }
 }
 
+export async function resetWhatsApp(): Promise<void> {
+  logger.info('WhatsApp reset requested');
+  waStatus = 'initializing';
+  currentQr = null;
+
+  try {
+    await client.destroy();
+  } catch {
+    // ignore destroy errors
+  }
+
+  const authPath = process.env.WWEBJS_AUTH_PATH ?? '.wwebjs_auth';
+  try {
+    fs.rmSync(authPath, { recursive: true, force: true });
+    logger.info({ authPath }, 'WhatsApp session cleared');
+  } catch (err) {
+    logger.warn({ err, authPath }, 'Could not clear session dir');
+  }
+
+  initWhatsAppClient();
+}
+
 export function initWhatsAppClient(): void {
+  waStatus = 'initializing';
+  currentQr = null;
+
   client = new Client({
     authStrategy: new LocalAuth({
       dataPath: process.env.WWEBJS_AUTH_PATH ?? '.wwebjs_auth',
@@ -40,20 +79,31 @@ export function initWhatsAppClient(): void {
     },
   });
 
-  client.on('qr', (qr) => {
+  client.on('qr', async (qr) => {
+    waStatus = 'qr';
     logger.info('Scan the QR code below to authenticate WhatsApp:');
     qrcode.generate(qr, { small: true });
+    try {
+      currentQr = await QRCode.toDataURL(qr);
+    } catch {
+      currentQr = null;
+    }
   });
 
   client.on('ready', () => {
+    waStatus = 'ready';
+    currentQr = null;
     logger.info({ wid: client.info.wid._serialized }, 'WhatsApp client ready');
   });
 
   client.on('auth_failure', (msg) => {
+    waStatus = 'disconnected';
     logger.error({ msg }, 'WhatsApp authentication failed');
   });
 
   client.on('disconnected', (reason) => {
+    waStatus = 'disconnected';
+    currentQr = null;
     logger.warn({ reason }, 'WhatsApp client disconnected');
   });
 
@@ -67,17 +117,14 @@ export function initWhatsAppClient(): void {
     const chatName = chat.name;
 
     try {
-      // Ensure group exists in DB and is whitelisted
       let group = await findGroupByChatId(chatId);
       if (!group) {
-        // Auto-register on first message (admin can deactivate via dashboard)
         group = await insertGroup(chatId, chatName);
         logger.info({ chatId, chatName }, 'New group registered');
       }
 
       if (!group.is_active) return;
 
-      // Send privacy notice on first interaction
       await sendPrivacyNoticeIfNeeded(chatId, group.id, group.privacy_notice_sent);
 
       const contact = await message.getContact();
@@ -86,19 +133,15 @@ export function initWhatsAppClient(): void {
       const body = message.body ?? '';
       const timestamp = new Date(message.timestamp * 1000);
 
-      // Detect @Maradona trigger: check mentionedIds or body keyword
       const botJid = client.info.wid._serialized;
       const mentionedIds: string[] = (message.mentionedIds ?? []) as unknown as string[];
       const isVoice = message.hasMedia && (message.type === 'audio' || message.type === 'ptt');
 
-      // For voice messages: always pass to handler (transcript decides if triggered)
-      // For text messages: check @mention or keyword
       const isMentioned =
         isVoice ||
         mentionedIds.some((id) => id === botJid) ||
         containsTrigger(body);
 
-      // Persist message to DB
       const savedMessage = await insertMessage({
         groupId: group.id,
         senderName,
@@ -126,6 +169,7 @@ export function initWhatsAppClient(): void {
 
   client.initialize().catch((err) => {
     logger.error({ err }, 'WhatsApp client initialization failed');
+    waStatus = 'disconnected';
   });
 }
 
