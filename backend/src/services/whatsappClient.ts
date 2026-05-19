@@ -158,11 +158,14 @@ export function initWhatsAppClient(): void {
       const botJid = client.info.wid._serialized;
       const mentionedIds: string[] = (message.mentionedIds ?? []) as unknown as string[];
       const isVoice = message.hasMedia && (message.type === 'audio' || message.type === 'ptt');
+      const isExplicitMention = mentionedIds.some((id) => id === botJid);
 
+      // For non-voice media (documents, images, videos), only trigger on explicit @mention
+      // to avoid false triggers from filenames containing "maradona"
       const isMentioned =
         isVoice ||
-        mentionedIds.some((id) => id === botJid) ||
-        containsTrigger(body);
+        isExplicitMention ||
+        (!message.hasMedia && containsTrigger(body));
 
       const savedMessage = await insertMessage({
         groupId: group.id,
