@@ -12,8 +12,10 @@ export function normalizeTurkish(text: string): string {
 }
 
 export function containsTrigger(text: string): boolean {
-  const normalized = normalizeTurkish(text).toLowerCase();
-  return normalized.includes('maradona');
+  const normalized = normalizeTurkish(text).toLowerCase().trim();
+  // Only trigger if "maradona" appears at the start of the message (as a command prefix)
+  // Avoids false triggers when "maradona" is mentioned in passing conversation
+  return normalized.startsWith('maradona') || normalized.startsWith('@maradona');
 }
 
 export function normalizeNameForMatch(name: string): string {
